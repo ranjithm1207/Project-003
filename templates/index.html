@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Secure federated learning framework for healthcare institutions — collaborative AI model training with differential privacy and regulatory compliance.">
+    <title>FedHealth AI — Federated Healthcare Learning Framework</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+
+        <!-- ══════════════ HERO ══════════════ -->
+        <section class="hero">
+            <div class="hero-badge">
+                <span class="pulse"></span>
+                Federated Learning Platform
+            </div>
+            <h1>FedHealth AI</h1>
+            <p>
+                Secure, privacy-preserving collaborative model training across national healthcare institutions.
+                Differential privacy guarantees ensure patient data never leaves hospital premises.
+            </p>
+        </section>
+
+        <!-- ══════════════ CONTROLS ══════════════ -->
+        <div class="control-bar">
+            <button class="btn btn-primary" id="btnTrain" onclick="startTraining()">
+                🚀 Start Training
+            </button>
+            <button class="btn btn-secondary" id="btnAnalysis" onclick="startPrivacyAnalysis()">
+                📊 Privacy Analysis
+            </button>
+        </div>
+
+        <!-- ══════════════ EPSILON CONTROL ══════════════ -->
+        <div class="epsilon-control">
+            <span style="font-size: 0.85rem; color: var(--text-secondary);">Privacy Budget:</span>
+            <input type="range" class="epsilon-slider" id="epsilonSlider"
+                   min="0.1" max="10" step="0.1" value="1.0">
+            <span class="epsilon-display" id="epsilonDisplay">ε = 1.0</span>
+        </div>
+
+        <!-- ══════════════ PROGRESS ══════════════ -->
+        <div class="progress-container" id="progressSection">
+            <div class="progress-label">
+                <span id="statusText">⏸ Idle</span>
+                <span><span id="roundInfo">—</span> · <span id="progressText">0%</span></span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- ══════════════ METRICS ══════════════ -->
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon">📈</div>
+                <div>
+                    <div class="section-title">Training Metrics</div>
+                    <div class="section-subtitle">Real-time model performance across the federation</div>
+                </div>
+            </div>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Accuracy</div>
+                    <div class="metric-value" id="metricAccuracy">—</div>
+                    <div class="metric-subtext">Global model</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">F1 Score</div>
+                    <div class="metric-value" id="metricF1">—</div>
+                    <div class="metric-subtext">Harmonic mean</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">AUC-ROC</div>
+                    <div class="metric-value" id="metricAUC">—</div>
+                    <div class="metric-subtext">Discrimination</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Loss</div>
+                    <div class="metric-value" id="metricLoss">—</div>
+                    <div class="metric-subtext">BCE loss</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Precision</div>
+                    <div class="metric-value" id="metricPrecision">—</div>
+                    <div class="metric-subtext">True positive rate</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Recall</div>
+                    <div class="metric-value" id="metricRecall">—</div>
+                    <div class="metric-subtext">Sensitivity</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════ CHARTS ══════════════ -->
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon">📊</div>
+                <div>
+                    <div class="section-title">Visualizations</div>
+                    <div class="section-subtitle">Training convergence and privacy-accuracy trade-off analysis</div>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <canvas id="convergenceChart"></canvas>
+                </div>
+                <div class="chart-container" id="tradeoffSection">
+                    <canvas id="tradeoffChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════ ARCHITECTURE ══════════════ -->
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon">🏗️</div>
+                <div>
+                    <div class="section-title">Federation Architecture</div>
+                    <div class="section-subtitle">Decentralized topology — data never leaves hospital premises</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="architecture-visual">
+                    <div class="arch-server">
+                        <div class="arch-server-label">🌐 Central Aggregation Server</div>
+                        <div class="arch-server-sub">FedAvg + Differential Privacy (ε,δ)-DP</div>
+                    </div>
+                    <div class="arch-connections">
+                        <div class="arch-line"></div>
+                        <div class="arch-line"></div>
+                        <div class="arch-line"></div>
+                        <div class="arch-line"></div>
+                        <div class="arch-line"></div>
+                    </div>
+                    <div class="arch-clients">
+                        <div class="arch-client">
+                            <div class="arch-client-flag">🇮🇳</div>
+                            <div class="arch-client-name">Apollo Medical</div>
+                        </div>
+                        <div class="arch-client">
+                            <div class="arch-client-flag">🇺🇸</div>
+                            <div class="arch-client-name">Johns Hopkins</div>
+                        </div>
+                        <div class="arch-client">
+                            <div class="arch-client-flag">🇩🇪</div>
+                            <div class="arch-client-name">Charité Hospital</div>
+                        </div>
+                        <div class="arch-client">
+                            <div class="arch-client-flag">🇯🇵</div>
+                            <div class="arch-client-name">Tokyo Medical</div>
+                        </div>
+                        <div class="arch-client">
+                            <div class="arch-client-flag">🇧🇷</div>
+                            <div class="arch-client-name">São Paulo General</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════ HOSPITAL NODES ══════════════ -->
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon">🏥</div>
+                <div>
+                    <div class="section-title">Hospital Nodes</div>
+                    <div class="section-subtitle">Participating institutions in the federation</div>
+                </div>
+            </div>
+            <div class="hospital-grid" id="hospitalGrid">
+                <!-- Populated by JavaScript -->
+            </div>
+        </section>
+
+        <!-- ══════════════ COMPLIANCE ══════════════ -->
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon">🛡️</div>
+                <div>
+                    <div class="section-title">Regulatory Compliance</div>
+                    <div class="section-subtitle">HIPAA & GDPR safeguard mapping and assessment</div>
+                </div>
+            </div>
+            <div class="compliance-grid">
+                <!-- HIPAA -->
+                <div class="compliance-card">
+                    <div class="compliance-title">
+                        🇺🇸 HIPAA Technical Safeguards
+                    </div>
+                    <div id="hipaaChecks">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                    <div class="compliance-score">
+                        <div>
+                            <div class="score-value" id="hipaaScore">—</div>
+                            <div class="score-label">Compliance Score</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GDPR -->
+                <div class="compliance-card">
+                    <div class="compliance-title">
+                        🇪🇺 GDPR Data Protection
+                    </div>
+                    <div id="gdprChecks">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                    <div class="compliance-score">
+                        <div>
+                            <div class="score-value" id="gdprScore">—</div>
+                            <div class="score-label">Compliance Score</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════ PRIVACY INFO ══════════════ -->
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon">🔐</div>
+                <div>
+                    <div class="section-title">Privacy Guarantees</div>
+                    <div class="section-subtitle">How differential privacy protects patient data</div>
+                </div>
+            </div>
+            <div class="card" style="max-width: 900px; margin: 0 auto;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--spacing-xl);">
+                    <div>
+                        <h3 style="color: var(--accent-primary); font-size: 1rem; margin-bottom: var(--spacing-sm);">
+                            🏥 Data Never Leaves
+                        </h3>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.6;">
+                            Raw patient records stay at each hospital. Only model gradients
+                            (mathematical abstractions) are transmitted to the central server.
+                        </p>
+                    </div>
+                    <div>
+                        <h3 style="color: var(--accent-secondary); font-size: 1rem; margin-bottom: var(--spacing-sm);">
+                            🎲 Noise Injection
+                        </h3>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.6;">
+                            Calibrated Gaussian noise is added to model updates before aggregation,
+                            providing (ε,δ)-differential privacy guarantees.
+                        </p>
+                    </div>
+                    <div>
+                        <h3 style="color: var(--accent-success); font-size: 1rem; margin-bottom: var(--spacing-sm);">
+                            ✂️ Gradient Clipping
+                        </h3>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.6;">
+                            Per-sample gradient clipping bounds the influence of any single
+                            patient record, preventing memorization attacks.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════ FOOTER ══════════════ -->
+        <footer class="footer">
+            <p>FedHealth AI — Federated Healthcare Learning Framework v1.0</p>
+            <p style="margin-top: 4px;">
+                Built with PyTorch · Flask · Differential Privacy · Chart.js
+            </p>
+        </footer>
+
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
