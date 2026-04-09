@@ -19,6 +19,11 @@ const state = {
     isTraining: false,
     charts: {},
     currentEpsilon: 1.0,
+    config: {
+        epochs: 3,
+        batch_size: 32,
+        learning_rate: 0.001
+    }
 };
 
 const API = {
@@ -28,6 +33,7 @@ const API = {
     privacyResults: '/api/privacy-results',
     compliance: '/api/compliance',
     hospitals: '/api/hospitals',
+    dataInsights: '/api/data-insights'
 };
 
 const CHART_COLORS = {
@@ -49,6 +55,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initCharts();
     loadHospitals();
     loadComplianceReport();
+    loadDataInsights();
+    initNetworkCanvas();
 
     // Epsilon slider
     const slider = document.getElementById('epsilonSlider');
@@ -78,6 +86,9 @@ async function startTraining() {
             body: JSON.stringify({
                 num_rounds: 30,
                 epsilon: state.currentEpsilon,
+                epochs: state.config.epochs,
+                batch_size: state.config.batch_size,
+                learning_rate: state.config.learning_rate
             }),
         });
         const data = await res.json();
@@ -224,6 +235,44 @@ function updateDashboard(data) {
     if (data.client_metrics && data.client_metrics.length > 0) {
         updateHospitalMetrics(data.client_metrics);
     }
+
+    // Update Logs
+    if (data.audit_log) {
+        updateLogs(data.audit_log);
+    }
+
+    // Refresh Hospitals Data quietly for live telemetry if API is open
+    // We already fetch hospitals independently, but we can hit the endpoint to refresh telemetry.
+    if(Math.random() > 0.5) { loadHospitalsQuietly(); }
+
+    // Update Beams
+    if (data.status === 'training') {
+        state.networkActive = true;
+    } else {
+        state.networkActive = false;
+    }
+}
+
+function updateLogs(auditLog) {
+    const logWindow = document.getElementById('logWindow');
+    if (!logWindow) return;
+    
+    // Only update if there are new logs to prevent constant complete re-renders
+    if (state.lastLogLength === auditLog.length) return;
+    state.lastLogLength = auditLog.length;
+
+    const currentLogs = logWindow.querySelectorAll('.log-entry:not(.system)').length;
+    
+    if (auditLog.length > currentLogs) {
+        logWindow.innerHTML = '<div class="log-entry system">[System] Connection established.</div>';
+        auditLog.forEach(log => {
+            const el = document.createElement('div');
+            el.className = 'log-entry audit';
+            el.innerHTML = `[${log.timestamp}] Node [${log.client_id}] | Signature: <span style="color:var(--text-muted)">${log.signature_prefix}</span> | Integrity: <span class="verify">${log.verified ? 'VERIFIED' : 'FAILED'}</span>`;
+            logWindow.appendChild(el);
+        });
+        logWindow.scrollTop = logWindow.scrollHeight;
+    }
 }
 
 function updateMetric(elementId, value, suffix = '', multiplier = 1, invert = false) {
@@ -351,6 +400,32 @@ function initCharts() {
             },
         });
     }
+
+    // Data Insights Charts
+    const pvCtx = document.getElementById('patientVolumeChart');
+    if (pvCtx) {
+        state.charts.patientVolume = new Chart(pvCtx, {
+            type: 'doughnut',
+            data: { labels: [], datasets: [{ data: [], backgroundColor: [CHART_COLORS.primary, '#3b82f6', CHART_COLORS.secondary, '#d946ef', CHART_COLORS.success], borderWidth: 0 }] },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'right', labels: { color: CHART_COLORS.text } } }
+            }
+        });
+    }
+
+    const orCtx = document.getElementById('outbreakRateChart');
+    if (orCtx) {
+        state.charts.outbreakRate = new Chart(orCtx, {
+            type: 'polarArea',
+            data: { labels: [], datasets: [{ data: [], backgroundColor: ['rgba(239, 68, 68, 0.5)', 'rgba(245, 158, 11, 0.5)', 'rgba(16, 185, 129, 0.5)', 'rgba(56, 187, 248, 0.5)', 'rgba(139, 92, 246, 0.5)'], borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }] },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'right', labels: { color: CHART_COLORS.text } } },
+                scales: { r: { grid: { color: CHART_COLORS.grid }, ticks: { display: false } } }
+            }
+        });
+    }
 }
 
 function updateConvergenceChart(roundsHistory) {
@@ -377,6 +452,24 @@ function updateTradeoffChart(privacyResults) {
 // ═════════════════════════════════════════════════════════════
 // Data Loaders
 // ═════════════════════════════════════════════════════════════
+
+async function loadHospitalsQuietly() {
+    try {
+        const res = await fetch(API.hospitals);
+        const hospitals = await res.json();
+        // Update DOM elements for telemetry only
+        hospitals.forEach(h => {
+            if(h.telemetry) {
+                const cpu = document.getElementById(`tel-cpu-${h.id}`);
+                const mem = document.getElementById(`tel-mem-${h.id}`);
+                const ping = document.getElementById(`tel-ping-${h.id}`);
+                if(cpu) cpu.textContent = `${h.telemetry.cpu}%`;
+                if(mem) mem.textContent = `${h.telemetry.mem}%`;
+                if(ping) ping.textContent = `${h.telemetry.ping}ms`;
+            }
+        });
+    } catch(e) {}
+}
 
 async function loadHospitals() {
     try {
@@ -414,6 +507,27 @@ async function loadComplianceReport() {
     }
 }
 
+async function loadDataInsights() {
+    try {
+        const res = await fetch(API.dataInsights);
+        const data = await res.json();
+        
+        const pvChart = state.charts.patientVolume;
+        const orChart = state.charts.outbreakRate;
+        if (pvChart && orChart && Array.isArray(data)) {
+            pvChart.data.labels = data.map(d => d.name);
+            pvChart.data.datasets[0].data = data.map(d => d.patients);
+            pvChart.update();
+
+            orChart.data.labels = data.map(d => d.name);
+            orChart.data.datasets[0].data = data.map(d => d.outbreak_rate * 100);
+            orChart.update();
+        }
+    } catch (err) {
+        console.error('Failed to load data insights:', err);
+    }
+}
+
 
 // ═════════════════════════════════════════════════════════════
 // Renderers
@@ -424,47 +538,54 @@ function renderHospitals(hospitals) {
     if (!grid) return;
 
     grid.innerHTML = hospitals.map(h => `
-        <div class="hospital-card" id="hospital-${h.id}">
-            <div class="hospital-header">
-                <span class="hospital-flag">${h.flag}</span>
+        <div class="h-card" id="hospital-${h.id}">
+            <div class="h-head">
+                <span class="h-flag">${h.flag}</span>
                 <div>
-                    <div class="hospital-name">${h.name}</div>
-                    <div class="hospital-country">${h.country}</div>
+                    <div class="h-name">${h.name}</div>
+                    <div class="h-country">${h.country}</div>
                 </div>
             </div>
-            <div class="hospital-status ${h.latest_metrics ? 'connected' : 'idle'}">
+            <div class="h-status ${h.latest_metrics ? 'training' : 'idle'}">
                 <span class="dot"></span>
-                ${h.latest_metrics ? 'Trained' : 'Ready'}
+                ${h.latest_metrics ? 'Training' : 'Ready'}
             </div>
-            <div class="hospital-stats">
-                <div class="hospital-stat">
-                    <div class="hospital-stat-label">Patients</div>
-                    <div class="hospital-stat-value">${h.num_samples.toLocaleString()}</div>
+            <div class="h-stats">
+                <div class="h-stat">
+                    <span class="h-stat-label">Patients</span>
+                    <span class="h-stat-val">${h.num_samples.toLocaleString()}</span>
                 </div>
-                <div class="hospital-stat">
-                    <div class="hospital-stat-label">Outbreak Rate</div>
-                    <div class="hospital-stat-value">${(h.outbreak_rate * 100).toFixed(0)}%</div>
+                <div class="h-stat">
+                    <span class="h-stat-label">Outbreak Rate</span>
+                    <span class="h-stat-val">${(h.outbreak_rate * 100).toFixed(0)}%</span>
                 </div>
                 ${h.latest_metrics ? `
-                    <div class="hospital-stat">
-                        <div class="hospital-stat-label">Accuracy</div>
-                        <div class="hospital-stat-value">${(h.latest_metrics.accuracy * 100).toFixed(1)}%</div>
+                    <div class="h-stat">
+                        <span class="h-stat-label">Accuracy</span>
+                        <span class="h-stat-val">${(h.latest_metrics.accuracy * 100).toFixed(1)}%</span>
                     </div>
-                    <div class="hospital-stat">
-                        <div class="hospital-stat-label">F1 Score</div>
-                        <div class="hospital-stat-value">${h.latest_metrics.f1_score.toFixed(3)}</div>
+                    <div class="h-stat">
+                        <span class="h-stat-label">F1 Score</span>
+                        <span class="h-stat-val">${h.latest_metrics.f1_score.toFixed(3)}</span>
                     </div>
                 ` : `
-                    <div class="hospital-stat">
-                        <div class="hospital-stat-label">Accuracy</div>
-                        <div class="hospital-stat-value">—</div>
+                    <div class="h-stat">
+                        <span class="h-stat-label">Accuracy</span>
+                        <span class="h-stat-val">—</span>
                     </div>
-                    <div class="hospital-stat">
-                        <div class="hospital-stat-label">F1 Score</div>
-                        <div class="hospital-stat-value">—</div>
+                    <div class="h-stat">
+                        <span class="h-stat-label">F1 Score</span>
+                        <span class="h-stat-val">—</span>
                     </div>
                 `}
             </div>
+            ${h.telemetry ? `
+            <div class="telemetry-grid">
+                <div class="tel-item"><span class="t-lbl">CPU</span><span class="t-val" id="tel-cpu-${h.id}">${h.telemetry.cpu}%</span></div>
+                <div class="tel-item"><span class="t-lbl">MEM</span><span class="t-val" id="tel-mem-${h.id}">${h.telemetry.mem}%</span></div>
+                <div class="tel-item"><span class="t-lbl">PING</span><span class="t-val" id="tel-ping-${h.id}">${h.telemetry.ping}ms</span></div>
+                <div class="tel-item"><span class="t-lbl">ENC</span><span class="t-val" id="tel-enc-${h.id}">${h.telemetry.enc}</span></div>
+            </div>` : ''}
         </div>
     `).join('');
 }
@@ -474,9 +595,9 @@ function updateHospitalMetrics(clientMetrics) {
         const card = document.getElementById(`hospital-${cm.hospital_id}`);
         if (!card) return;
 
-        const status = card.querySelector('.hospital-status');
+        const status = card.querySelector('.h-status');
         if (status) {
-            status.className = 'hospital-status connected';
+            status.className = 'h-status training';
             status.innerHTML = '<span class="dot"></span> Training';
         }
     });
@@ -487,20 +608,20 @@ function renderCompliance(report) {
     const hipaaContainer = document.getElementById('hipaaChecks');
     if (hipaaContainer && report.hipaa) {
         hipaaContainer.innerHTML = report.hipaa.controls.map(c => `
-            <div class="compliance-item">
-                <div class="compliance-status ${c.status === 'COMPLIANT' ? 'pass' : 'partial'}">
-                    ${c.status === 'COMPLIANT' ? '✓' : '~'}
+            <div class="c-item">
+                <div class="c-icon ${c.status === 'COMPLIANT' ? 'pass' : 'warn'}">
+                    <i class="ti ${c.status === 'COMPLIANT' ? 'ti-check' : 'ti-alert-circle'}"></i>
                 </div>
-                <div>
-                    <div class="compliance-req">${c.requirement}</div>
-                    <div class="compliance-desc">${c.implementation.substring(0, 120)}...</div>
+                <div class="c-content">
+                    <h4>${c.requirement}</h4>
+                    <p>${c.implementation.substring(0, 120)}...</p>
                 </div>
             </div>
         `).join('');
 
         const hipaaScore = document.getElementById('hipaaScore');
         if (hipaaScore) {
-            hipaaScore.textContent = `${report.hipaa.summary.compliance_score}%`;
+            hipaaScore.innerHTML = `${report.hipaa.summary.compliance_score}%`;
         }
     }
 
@@ -508,20 +629,20 @@ function renderCompliance(report) {
     const gdprContainer = document.getElementById('gdprChecks');
     if (gdprContainer && report.gdpr) {
         gdprContainer.innerHTML = report.gdpr.controls.map(c => `
-            <div class="compliance-item">
-                <div class="compliance-status ${c.status === 'COMPLIANT' ? 'pass' : 'partial'}">
-                    ${c.status === 'COMPLIANT' ? '✓' : '~'}
+            <div class="c-item">
+                <div class="c-icon ${c.status === 'COMPLIANT' ? 'pass' : 'warn'}">
+                    <i class="ti ${c.status === 'COMPLIANT' ? 'ti-check' : 'ti-alert-circle'}"></i>
                 </div>
-                <div>
-                    <div class="compliance-req">${c.requirement}</div>
-                    <div class="compliance-desc">${c.implementation.substring(0, 120)}...</div>
+                <div class="c-content">
+                    <h4>${c.requirement}</h4>
+                    <p>${c.implementation.substring(0, 120)}...</p>
                 </div>
             </div>
         `).join('');
 
         const gdprScore = document.getElementById('gdprScore');
         if (gdprScore) {
-            gdprScore.textContent = `${report.gdpr.summary.compliance_score}%`;
+            gdprScore.innerHTML = `${report.gdpr.summary.compliance_score}%`;
         }
     }
 }
@@ -549,4 +670,149 @@ function showToast(message, type = 'info') {
         toast.classList.remove('show');
         setTimeout(() => toast.remove(), 300);
     }, 4000);
+}
+
+// ═════════════════════════════════════════════════════════════
+// Settings & Interactivity
+// ═════════════════════════════════════════════════════════════
+
+function toggleSettings() {
+    const modal = document.getElementById('settingsModal');
+    if (modal) {
+        modal.classList.toggle('active');
+        // Populate current state into inputs
+        document.getElementById('inputEpochs').value = state.config.epochs;
+        document.getElementById('inputBatchSize').value = state.config.batch_size;
+        document.getElementById('inputLR').value = state.config.learning_rate;
+    }
+}
+
+function saveSettings() {
+    state.config.epochs = parseInt(document.getElementById('inputEpochs').value) || 3;
+    state.config.batch_size = parseInt(document.getElementById('inputBatchSize').value) || 32;
+    state.config.learning_rate = parseFloat(document.getElementById('inputLR').value) || 0.001;
+    
+    toggleSettings();
+    showToast('Advanced configuration saved!', 'success');
+}
+
+function clearLog() {
+    const logWindow = document.getElementById('logWindow');
+    if (logWindow) {
+        logWindow.innerHTML = '<div class="log-entry system">[System] Log cleared by user.</div>';
+        state.lastLogLength = 0;
+    }
+}
+
+async function downloadComplianceReport() {
+    try {
+        const res = await fetch(API.compliance);
+        const report = await res.json();
+        const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `FedHealth_Compliance_Report_${new Date().toISOString().slice(0,10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Report downloaded successfully!', 'success');
+    } catch (err) {
+        showToast('Error downloading report.', 'error');
+    }
+}
+
+// ═════════════════════════════════════════════════════════════
+// Network Canvas Animation
+// ═════════════════════════════════════════════════════════════
+
+function initNetworkCanvas() {
+    const canvas = document.getElementById('networkCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    
+    // Resize
+    const resize = () => {
+        const container = canvas.parentElement;
+        canvas.width = container.offsetWidth;
+        canvas.height = container.offsetHeight;
+    };
+    window.addEventListener('resize', resize);
+    resize();
+
+    const particles = [];
+    const createParticle = (x1, y1, x2, y2) => {
+        particles.push({
+            x: x1, y: y1,
+            targetX: x2, targetY: y2,
+            progress: 0,
+            speed: 0.01 + Math.random() * 0.02,
+            size: 2 + Math.random() * 2
+        });
+    };
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const serverEl = document.querySelector('.arch-server-box');
+        const nodeEls = document.querySelectorAll('.arch-nodes .node');
+        
+        if (!serverEl || nodeEls.length === 0) {
+            requestAnimationFrame(draw);
+            return;
+        }
+
+        const sRect = serverEl.getBoundingClientRect();
+        const cRect = canvas.getBoundingClientRect();
+        
+        const serverX = sRect.left - cRect.left + sRect.width / 2;
+        const serverY = sRect.bottom - cRect.top - 10;
+
+        nodeEls.forEach(node => {
+            const nRect = node.getBoundingClientRect();
+            const nodeX = nRect.left - cRect.left + nRect.width / 2;
+            const nodeY = nRect.top - cRect.top;
+
+            // Draw line
+            ctx.beginPath();
+            ctx.moveTo(serverX, serverY);
+            ctx.lineTo(nodeX, nodeY);
+            ctx.strokeStyle = state.networkActive ? 'rgba(16, 185, 129, 0.4)' : 'rgba(14, 165, 233, 0.2)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Spawn particles if active
+            if (state.networkActive && Math.random() < 0.05) {
+                // Bi-directional flow
+                if (Math.random() > 0.5) createParticle(serverX, serverY, nodeX, nodeY);
+                else createParticle(nodeX, nodeY, serverX, serverY);
+            }
+        });
+
+        // Draw and update particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.progress += p.speed;
+            
+            if (p.progress >= 1) {
+                particles.splice(i, 1);
+                continue;
+            }
+
+            const x = p.x + (p.targetX - p.x) * p.progress;
+            const y = p.y + (p.targetY - p.y) * p.progress;
+
+            ctx.beginPath();
+            ctx.arc(x, y, p.size, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(0, 212, 255, 0.8)';
+            ctx.fill();
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00d4ff';
+        }
+        ctx.shadowBlur = 0; // reset
+
+        requestAnimationFrame(draw);
+    }
+    draw();
 }

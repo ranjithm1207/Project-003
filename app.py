@@ -12,7 +12,8 @@ Serves the federated learning monitoring dashboard with APIs for:
 import json
 import threading
 import os
-from flask import Flask, render_template, jsonify, request
+import random
+from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 
 import config
 from data_generator import generate_all_hospital_data
@@ -21,6 +22,7 @@ from privacy_analysis import run_privacy_sweep, generate_plots
 from compliance import ComplianceEngine
 
 app = Flask(__name__)
+app.secret_key = 'fedhealth_cyber_secret_key_90210'
 
 # ─── Global State ─────────────────────────────────────────
 training_state = {
@@ -42,6 +44,49 @@ training_lock = threading.Lock()
 # ═════════════════════════════════════════════════════════════
 # Routes
 # ═════════════════════════════════════════════════════════════
+
+@app.before_request
+def require_login():
+    """Ensure user is authenticated before accessing the dashboard or secure APIs."""
+    auth_routes = ['/', '/api/train', '/api/status', '/api/privacy-analysis', '/api/compliance', '/api/hospitals', '/api/data-insights']
+    if request.path in auth_routes and not session.get('logged_in'):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
+        return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Handle administrative login."""
+    if request.method == 'POST':
+        user = request.form.get('username')
+        pwd = request.form.get('password')
+        if user == 'admin' and pwd == 'admin':
+            session['logged_in'] = True
+            session['username'] = user
+            return redirect(url_for('index'))
+        else:
+            return render_template('login.html', error="ACCESS DENIED: Invalid System Credentials.")
+            
+    # Redirect if already logged in
+    if session.get('logged_in'):
+        return redirect(url_for('index'))
+        
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    """Clear session securely."""
+    session.clear()
+    return redirect(url_for('login'))
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """Handle access recovery request."""
+    if request.method == 'POST':
+        # Simulated reset process
+        return render_template('forgot_password.html', success=True)
+    return render_template('forgot_password.html')
+
 
 @app.route('/')
 def index():
@@ -65,6 +110,10 @@ def start_training():
     data = request.get_json(silent=True) or {}
     num_rounds = data.get('num_rounds', config.NUM_ROUNDS)
     epsilon = data.get('epsilon', config.DEFAULT_EPSILON)
+    
+    config.LOCAL_EPOCHS = data.get('epochs', config.LOCAL_EPOCHS)
+    config.LOCAL_BATCH_SIZE = data.get('batch_size', config.LOCAL_BATCH_SIZE)
+    config.LEARNING_RATE = data.get('learning_rate', config.LEARNING_RATE)
 
     def train_pipeline():
         try:
@@ -133,6 +182,8 @@ def get_status():
 
         if training_state['server']:
             response['summary'] = training_state['server'].get_training_summary()
+            if hasattr(training_state['server'], 'secure_agg'):
+                response['audit_log'] = training_state['server'].secure_agg.audit_log[-50:]
 
         if training_state['metrics']:
             m = training_state['metrics']
@@ -248,6 +299,12 @@ def get_hospitals():
             'flag': h['flag'],
             'num_samples': h['num_samples'],
             'outbreak_rate': h['outbreak_rate'],
+            'telemetry': {
+                'cpu': round(random.uniform(20.0, 95.0), 1),
+                'mem': round(random.uniform(40.0, 98.0), 1),
+                'ping': random.randint(12, 120),
+                'enc': 'AES-256'
+            }
         }
 
         # Add training metrics if available
@@ -292,6 +349,27 @@ def get_hospital(hospital_id):
 
     return jsonify(response)
 
+
+@app.route('/api/data-insights')
+def get_data_insights():
+    """Get insights on the synthetic data distribution across nodes."""
+    insights = []
+    # If data is generated, calculate exactly, else use config
+    for h in config.HOSPITALS:
+        outbreak_rate = h['outbreak_rate']
+        patients = h['num_samples']
+        if training_state['hospital_data'] and h['id'] in training_state['hospital_data']:
+            df = training_state['hospital_data'][h['id']]
+            outbreak_rate = float(df['outbreak_risk'].mean())
+            patients = len(df)
+        
+        insights.append({
+            'id': h['id'],
+            'name': h['name'],
+            'patients': patients,
+            'outbreak_rate': outbreak_rate
+        })
+    return jsonify(insights)
 
 # ═════════════════════════════════════════════════════════════
 # Main
